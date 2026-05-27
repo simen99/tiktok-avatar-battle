@@ -11,6 +11,7 @@ let roundTime = "00:00";
 
 let avatars = []; 
 let particles = []; 
+const userDeathTimes = {}; // Menyimpan data waktu kematian pengguna
 
 // UI Admin Panel
 const streamerUsernameInput = document.getElementById('streamerUsername');
@@ -30,7 +31,6 @@ socket.on('connectionStatus', (data) => {
     statusDiv.style.color = data.success ? '#2ecc71' : '#e74c3c';
 });
 
-// Gambar default jika foto profil TikTok gagal diunduh
 const defaultAvatar = new Image();
 defaultAvatar.src = 'https://www.w3schools.com/howto/img_avatar.png';
 
@@ -44,10 +44,10 @@ class Avatar {
         
         if (team === 'girl') {
             this.x = 50 + Math.random() * 50;
-            this.color = '#3498db'; // Biru untuk Girl
+            this.color = '#3498db';
         } else {
             this.x = width - 50 - Math.random() * 50;
-            this.color = '#e74c3c'; // Merah untuk Boy
+            this.color = '#e74c3c';
         }
         this.y = 150 + Math.random() * (height - 300);
         
@@ -75,12 +75,10 @@ class Avatar {
             const dy = this.target.y - this.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            // Jika masih jauh, dekati musuh
             if (distance > 35) {
                 this.x += (dx / distance) * this.speed;
                 this.y += (dy / distance) * this.speed;
             } else {
-                // Jika sudah dekat, serang musuh
                 const now = Date.now();
                 if (now - this.lastAttack > this.attackCooldown) {
                     this.attack(this.target);
@@ -88,7 +86,6 @@ class Avatar {
                 }
             }
         } else {
-            // Bergerak perlahan ke arah garis tengah jika tidak ada musuh
             const targetX = this.team === 'girl' ? (width / 2) - 40 : (width / 2) + 40;
             const dx = targetX - this.x;
             if (Math.abs(dx) > 5) {
@@ -96,7 +93,6 @@ class Avatar {
             }
         }
 
-        // Batasi gerakan agar tidak keluar batas vertikal canvas
         if (this.y < 120) this.y = 120;
         if (this.y > height - 120) this.y = height - 120;
     }
@@ -123,10 +119,12 @@ class Avatar {
         const damage = 8 + Math.floor(Math.random() * 8);
         target.hp -= damage;
 
-        // Efek visual ketukan/hit
         createParticles(target.x, target.y, this.color);
 
         if (target.hp <= 0) {
+            // Catat waktu kematian pengguna ini
+            userDeathTimes[target.username] = Date.now();
+
             if (this.team === 'girl') {
                 killsGirl++;
             } else {
@@ -138,7 +136,6 @@ class Avatar {
     draw() {
         ctx.save();
         
-        // Menggambar bar nyawa (HP)
         const barWidth = 40;
         const barHeight = 4;
         ctx.fillStyle = '#c0392b';
@@ -146,7 +143,6 @@ class Avatar {
         ctx.fillStyle = '#2ecc71';
         ctx.fillRect(this.x - barWidth / 2, this.y - this.radius - 12, barWidth * (this.hp / this.maxHp), barHeight);
 
-        // Bingkai dan efek cahaya avatar
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
@@ -155,7 +151,6 @@ class Avatar {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Membuat bentuk lingkaran masker foto avatar
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius - 3, 0, Math.PI * 2);
         ctx.clip();
@@ -169,7 +164,6 @@ class Avatar {
 
         ctx.restore();
 
-        // Nama pengguna di bawah lingkaran avatar
         ctx.font = 'bold 9px Arial';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
@@ -214,23 +208,41 @@ function drawParticles() {
     });
 }
 
-// Menerima event dari WebSocket server
+// Menangani permintaan spawn avatar dengan validasi ketat
 socket.on('spawnAvatar', (data) => {
-    // Membatasi tumpukan avatar agar browser tidak lambat
+    // 1. Cek apakah pengguna sudah ada di arena dan masih hidup
+    const isAlreadyAlive = avatars.some(a => a.username === data.username && a.hp > 0);
+    if (isAlreadyAlive) {
+        return; // Abaikan jika masih hidup
+    }
+
+    // Ambil riwayat waktu kematian terakhir pengguna ini (default 0 jika belum pernah mati)
+    const lastDeathTime = userDeathTimes[data.username] || 0;
+
+    // 2. Cegah antrian chat lama: abaikan jika chat dikirim SEBELUM waktu kematian terakhir mereka
+    if (data.timestamp < lastDeathTime) {
+        return; 
+    }
+
+    // 3. Tambahkan cooldown pasca-mati: berikan jeda minimal 3 detik setelah mati baru boleh masuk lagi
+    const now = Date.now();
+    if (now - lastDeathTime < 3000) {
+        return; 
+    }
+
+    // Jika lolos semua validasi, masukkan ke arena
     if (avatars.length < 120) {
         avatars.push(new Avatar(data.username, data.avatarUrl, data.team));
     }
 });
 
 socket.on('specialAttack', (data) => {
-    // Munculkan 3 avatar sekaligus jika penonton mengirim gift
     for (let i = 0; i < 3; i++) {
         const teamAssigned = Math.random() > 0.5 ? 'girl' : 'boy';
         avatars.push(new Avatar(data.username + `_SP${i+1}`, data.avatarUrl, teamAssigned));
     }
 });
 
-// Penghitung waktu perputaran
 let seconds = 0;
 setInterval(() => {
     seconds++;
@@ -239,13 +251,10 @@ setInterval(() => {
     roundTime = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }, 1000);
 
-// Utama Game Loop
 function gameLoop() {
-    // Latar Belakang Lapangan Hijau
     ctx.fillStyle = '#27ae60';
     ctx.fillRect(0, 0, width, height);
 
-    // Garis Batas Tengah
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 4;
     ctx.setLineDash([10, 10]);
@@ -253,9 +262,8 @@ function gameLoop() {
     ctx.moveTo(width / 2, 100);
     ctx.lineTo(width / 2, height - 100);
     ctx.stroke();
-    ctx.setLineDash([]); // Reset dash
+    ctx.setLineDash([]);
 
-    // Memperbarui dan Menggambar Avatar
     avatars = avatars.filter(a => a.hp > 0);
     avatars.forEach(avatar => {
         avatar.update();
@@ -265,21 +273,19 @@ function gameLoop() {
     updateParticles();
     drawParticles();
 
-    // Gambar Header Hitam Overlay (Skor & Waktu)
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, width, 100);
 
     ctx.fillStyle = '#3498db';
     ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('CHAT G JOIN GIRL', 20, 30);
+    ctx.fillText('CHAT 1 JOIN GIRL', 20, 30);
 
     ctx.fillStyle = '#e74c3c';
     ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('CHAT B JOIN BOY', width - 20, 30);
+    ctx.fillText('CHAT 2 JOIN BOY', width - 20, 30);
 
-    // Statistik Tim Kills
     ctx.fillStyle = '#bdc3c7';
     ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'left';
@@ -296,7 +302,6 @@ function gameLoop() {
     ctx.font = 'bold 20px sans-serif';
     ctx.fillText(`${killsBoy} KILLS`, width - 20, 75);
 
-    // Desain Waktu Putaran Tengah
     ctx.fillStyle = '#e67e22';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
@@ -305,7 +310,6 @@ function gameLoop() {
     ctx.font = 'bold 22px sans-serif';
     ctx.fillText(roundTime, width / 2, 65);
 
-    // Keterangan Daftar Triggers di Kanan Bawah
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(width - 160, height - 180, 150, 160);
     ctx.strokeStyle = '#fff';
@@ -333,8 +337,7 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
-// --- Tambahan Logika Sembunyikan Panel untuk Pengguna HP ---
+// --- Logika Sembunyikan Panel ---
 const toggleAdminBtn = document.getElementById('toggleAdminBtn');
 const adminContent = document.getElementById('admin-content');
 const adminPanel = document.getElementById('admin-panel');
@@ -347,7 +350,8 @@ toggleAdminBtn.addEventListener('click', () => {
     } else {
         adminContent.style.display = 'none';
         toggleAdminBtn.innerText = 'Tampilkan';
-        // Membuat tombol menjadi transparan/samar agar tidak mengganggu layar stream
         adminPanel.style.background = 'rgba(0, 0, 0, 0.3)';
     }
 });
+
+gameLoop();
