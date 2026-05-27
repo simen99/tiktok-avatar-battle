@@ -10,8 +10,9 @@ let killsBoy = 0;
 let roundTime = "00:00";
 
 let avatars = []; 
+let bullets = []; // Array untuk menampung semua peluru yang aktif
 let particles = []; 
-const userDeathTimes = {}; // Menyimpan data waktu kematian pengguna
+const userDeathTimes = {}; 
 
 // UI Admin Panel
 const streamerUsernameInput = document.getElementById('streamerUsername');
@@ -34,6 +35,81 @@ socket.on('connectionStatus', (data) => {
 const defaultAvatar = new Image();
 defaultAvatar.src = 'https://www.w3schools.com/howto/img_avatar.png';
 
+// ==========================================
+// CLASS PELURU (BULLET)
+// ==========================================
+class Bullet {
+    constructor(startX, startY, target, team, damage, color) {
+        this.x = startX;
+        this.y = startY;
+        this.team = team;
+        this.damage = damage;
+        this.color = color;
+        this.radius = 4;
+        this.active = true;
+
+        // Hitung arah dan sudut tembakan menuju target
+        const dx = target.x - startX;
+        const dy = target.y - startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        this.speed = 7; // Kecepatan terbang peluru
+        this.vx = (dx / distance) * this.speed;
+        this.vy = (dy / distance) * this.speed;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Periksa tabrakan dengan semua avatar musuh
+        for (let other of avatars) {
+            if (other.team !== this.team && other.hp > 0) {
+                const dx = other.x - this.x;
+                const dy = other.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                // Jika peluru mengenai radius tubuh musuh
+                if (dist < other.radius + this.radius) {
+                    other.hp -= this.damage;
+                    createParticles(other.x, other.y, this.color);
+                    this.active = false; // Hancurkan peluru
+
+                    // Jika musuh mati akibat peluru ini
+                    if (other.hp <= 0) {
+                        userDeathTimes[other.username] = Date.now();
+                        if (this.team === 'girl') {
+                            killsGirl++;
+                        } else {
+                            killsBoy++;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Hancurkan peluru jika keluar batas layar
+        if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+            this.active = false;
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 10; // Efek peluru bercahaya (glow)
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// ==========================================
+// CLASS AVATAR (PEMAIN)
+// ==========================================
 class Avatar {
     constructor(username, avatarUrl, team) {
         this.username = username;
@@ -51,7 +127,7 @@ class Avatar {
         }
         this.y = 150 + Math.random() * (height - 300);
         
-        this.speed = 1.2 + Math.random() * 0.8;
+        this.speed = 1.0 + Math.random() * 0.8;
         
         this.img = new Image();
         this.img.crossOrigin = "anonymous"; 
@@ -62,7 +138,7 @@ class Avatar {
 
         this.target = null;
         this.lastAttack = 0;
-        this.attackCooldown = 800; // ms
+        this.attackCooldown = 1200; // Jeda waktu menembak (1.2 detik)
     }
 
     update() {
@@ -75,10 +151,17 @@ class Avatar {
             const dy = this.target.y - this.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance > 35) {
+            // Pergerakan taktis: Dekati jika terlalu jauh, tapi batasi agar tidak lewat tengah
+            if (distance > 180) {
                 this.x += (dx / distance) * this.speed;
                 this.y += (dy / distance) * this.speed;
             } else {
+                // Menghindar menyamping sedikit atau bergerak ke atas/bawah untuk mencari celah tembak
+                this.y += (Math.random() - 0.5) * this.speed;
+            }
+
+            // Menembakkan peluru jika cooldown selesai dan musuh berada dalam jangkauan pandang
+            if (distance < 450) {
                 const now = Date.now();
                 if (now - this.lastAttack > this.attackCooldown) {
                     this.attack(this.target);
@@ -86,13 +169,26 @@ class Avatar {
                 }
             }
         } else {
-            const targetX = this.team === 'girl' ? (width / 2) - 40 : (width / 2) + 40;
+            // Jika tidak ada musuh, berbaris mendekati garis batas masing-masing
+            const targetX = this.team === 'girl' ? (width / 2) - 60 : (width / 2) + 60;
             const dx = targetX - this.x;
             if (Math.abs(dx) > 5) {
                 this.x += Math.sign(dx) * 0.5;
             }
         }
 
+        // ==========================================
+        // VALIDASI PEMBATAS GARIS TENGAH (Mencegah Lewat Batas)
+        // ==========================================
+        if (this.team === 'girl') {
+            if (this.x < 30) this.x = 30;
+            if (this.x > (width / 2) - 40) this.x = (width / 2) - 40; // Batas kiri tidak boleh lewati garis tengah
+        } else {
+            if (this.x > width - 30) this.x = width - 30;
+            if (this.x < (width / 2) + 40) this.x = (width / 2) + 40; // Batas kanan tidak boleh lewati garis tengah
+        }
+
+        // Batasi gerakan vertikal arena
         if (this.y < 120) this.y = 120;
         if (this.y > height - 120) this.y = height - 120;
     }
@@ -116,21 +212,9 @@ class Avatar {
     }
 
     attack(target) {
+        // Meluncurkan objek Bullet baru, bukan mengurangi HP secara instan
         const damage = 8 + Math.floor(Math.random() * 8);
-        target.hp -= damage;
-
-        createParticles(target.x, target.y, this.color);
-
-        if (target.hp <= 0) {
-            // Catat waktu kematian pengguna ini
-            userDeathTimes[target.username] = Date.now();
-
-            if (this.team === 'girl') {
-                killsGirl++;
-            } else {
-                killsBoy++;
-            }
-        }
+        bullets.push(new Bullet(this.x, this.y, target, this.team, damage, this.color));
     }
 
     draw() {
@@ -210,27 +294,22 @@ function drawParticles() {
 
 // Menangani permintaan spawn avatar dengan validasi ketat
 socket.on('spawnAvatar', (data) => {
-    // 1. Cek apakah pengguna sudah ada di arena dan masih hidup
     const isAlreadyAlive = avatars.some(a => a.username === data.username && a.hp > 0);
     if (isAlreadyAlive) {
-        return; // Abaikan jika masih hidup
+        return; 
     }
 
-    // Ambil riwayat waktu kematian terakhir pengguna ini (default 0 jika belum pernah mati)
     const lastDeathTime = userDeathTimes[data.username] || 0;
 
-    // 2. Cegah antrian chat lama: abaikan jika chat dikirim SEBELUM waktu kematian terakhir mereka
     if (data.timestamp < lastDeathTime) {
         return; 
     }
 
-    // 3. Tambahkan cooldown pasca-mati: berikan jeda minimal 3 detik setelah mati baru boleh masuk lagi
     const now = Date.now();
     if (now - lastDeathTime < 3000) {
         return; 
     }
 
-    // Jika lolos semua validasi, masukkan ke arena
     if (avatars.length < 120) {
         avatars.push(new Avatar(data.username, data.avatarUrl, data.team));
     }
@@ -252,10 +331,12 @@ setInterval(() => {
 }, 1000);
 
 function gameLoop() {
+    // Latar Belakang Lapangan Hijau
     ctx.fillStyle = '#27ae60';
     ctx.fillRect(0, 0, width, height);
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    // Garis Batas Tengah
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
     ctx.lineWidth = 4;
     ctx.setLineDash([10, 10]);
     ctx.beginPath();
@@ -264,6 +345,14 @@ function gameLoop() {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // Update & Menggambar Peluru
+    bullets = bullets.filter(b => b.active);
+    bullets.forEach(bullet => {
+        bullet.update();
+        bullet.draw();
+    });
+
+    // Update & Menggambar Avatar
     avatars = avatars.filter(a => a.hp > 0);
     avatars.forEach(avatar => {
         avatar.update();
@@ -273,6 +362,7 @@ function gameLoop() {
     updateParticles();
     drawParticles();
 
+    // Gambar Header Hitam Overlay
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, width, 100);
 
@@ -310,6 +400,7 @@ function gameLoop() {
     ctx.font = 'bold 22px sans-serif';
     ctx.fillText(roundTime, width / 2, 65);
 
+    // Keterangan Daftar Triggers
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(width - 160, height - 180, 150, 160);
     ctx.strokeStyle = '#fff';
@@ -337,7 +428,7 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// --- Logika Sembunyikan Panel ---
+// Logika Sembunyikan Panel
 const toggleAdminBtn = document.getElementById('toggleAdminBtn');
 const adminContent = document.getElementById('admin-content');
 const adminPanel = document.getElementById('admin-panel');
