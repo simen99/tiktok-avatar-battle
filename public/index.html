@@ -11,7 +11,7 @@
             padding: 0;
         }
         body {
-            background-color: #0c0c0c;
+            background-color: #050505;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -22,25 +22,27 @@
         }
         #game-container {
             position: relative;
-            width: 100vw;
-            height: 100vh;
-            max-width: 56.25vh; /* Mengunci rasio 9:16 agar visual anti-terpotong di HP */
-            background: #000;
-            overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-            border-left: 1px solid #222;
-            border-right: 1px solid #222;
-        }
-        canvas {
             width: 100%;
             height: 100%;
+            max-width: 540px;
+            max-height: 960px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            aspect-ratio: 9 / 16; /* Mengunci rasio 9:16 */
+            object-fit: contain;  /* Jaminan visual utuh, tidak akan terpotong pada layar tinggi */
             display: block;
-            object-fit: cover;
+            background-color: #000;
         }
         /* Panel admin yang bisa digeser (draggable) */
         #admin-panel {
             position: absolute;
-            top: 130px; /* Diturunkan sedikit agar tidak menutupi papan skor atas */
+            top: 130px; 
             left: 15px;
             background: rgba(10, 10, 10, 0.95);
             padding: 12px;
@@ -52,7 +54,7 @@
             width: 180px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.5);
             user-select: none;
-            touch-action: none; /* Mencegah layar HP bergeser saat menarik panel */
+            touch-action: none;
         }
         #admin-header {
             font-weight: bold;
