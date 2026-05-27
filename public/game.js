@@ -13,10 +13,11 @@ let avatars = [];
 let bullets = []; 
 let particles = []; 
 const userDeathTimes = {}; 
-const activeUsernames = new Set(); // Mencegah duplikasi pemain ganda secara mutlak
+const activeUsernames = new Set(); 
 
 // Audio Setup menggunakan Web Audio API
 let audioCtx = null;
+let lastShootSoundTime = 0; // Untuk membatasi suara tembakan agar tidak merusak audio siaran
 
 function initAudio() {
     if (!audioCtx) {
@@ -68,6 +69,40 @@ function playKillSound() {
     }
 }
 
+// Efek suara tembakan laser retro dengan pembatas frekuensi (anti-distorsi)
+function playShootSound() {
+    const nowTime = Date.now();
+    // Membatasi suara tembakan maksimal 12 kali per detik agar suara stream tetap bersih
+    if (nowTime - lastShootSoundTime < 80) { 
+        return;
+    }
+    lastShootSoundTime = nowTime;
+
+    initAudio();
+    if (!audioCtx) return;
+
+    try {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.type = 'sine'; // Gelombang sinus menghasilkan suara 'pew' yang lembut
+        osc.frequency.setValueAtTime(650, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.04, now); // Volume pelan agar tidak bising saat spam
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } catch (e) {
+        console.error("Gagal memutar audio tembakan:", e);
+    }
+}
+
 // UI Admin Panel & Draggable Logic
 const streamerUsernameInput = document.getElementById('streamerUsername');
 const connectBtn = document.getElementById('connectBtn');
@@ -89,7 +124,6 @@ socket.on('connectionStatus', (data) => {
     statusDiv.style.color = data.success ? '#2ecc71' : '#e74c3c';
 });
 
-// Sistem Drag and Drop Panel Admin (PC & HP)
 let isDragging = false;
 let startX, startY;
 
@@ -232,7 +266,7 @@ class Avatar {
         }
         this.y = 150 + Math.random() * (height - 300);
         
-        this.speed = 1.0 + Math.random() * 0.8;
+        this.speed = 0.8 + Math.random() * 0.6; // Kecepatan melayang santai
         
         this.img = new Image();
         this.img.crossOrigin = "anonymous"; 
@@ -244,40 +278,71 @@ class Avatar {
         this.target = null;
         this.lastAttack = 0;
         this.attackCooldown = 1200; 
+
+        // Sistem Mengambang Acak (Float & Wander)
+        this.bobPhase = Math.random() * Math.PI * 2; // Fase awal melayang naik-turun
+        this.wanderX = this.x;
+        this.wanderY = this.y;
+        this.lastWanderTime = 0;
+        this.chooseNewWanderTarget();
+    }
+
+    // Memilih titik kordinat acak baru di area pertahanannya
+    chooseNewWanderTarget() {
+        const minY = 140;
+        const maxY = height - 130;
+        this.wanderY = minY + Math.random() * (maxY - minY);
+        
+        if (this.team === 'girl') {
+            const minX = 40;
+            const maxX = (width / 2) - 50;
+            this.wanderX = minX + Math.random() * (maxX - minX);
+        } else {
+            const minX = (width / 2) + 50;
+            const maxX = width - 40;
+            this.wanderX = minX + Math.random() * (maxX - minX);
+        }
     }
 
     update() {
+        // Logika berkeliaran secara acak (ganti arah setiap 3 - 5 detik)
+        const now = Date.now();
+        if (now - this.lastWanderTime > 3000 + Math.random() * 2000) {
+            this.chooseNewWanderTarget();
+            this.lastWanderTime = now;
+        }
+
+        // Bergerak mengambang mendekati titik tujuan acak (wander target)
+        const dx = this.wanderX - this.x;
+        const dy = this.wanderY - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 5) {
+            this.x += (dx / dist) * this.speed * 0.7; // Gerakan lebih lambat agar terasa melayang
+            this.y += (dy / dist) * this.speed * 0.7;
+        }
+
+        // Cari musuh terdekat untuk ditembak
         if (!this.target || this.target.hp <= 0) {
             this.target = this.findClosestOpponent();
         }
 
         if (this.target) {
-            const dx = this.target.x - this.x;
-            const dy = this.target.y - this.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            const targetDx = this.target.x - this.x;
+            const targetDy = this.target.y - this.y;
+            const targetDistance = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
 
-            if (distance > 180) {
-                this.x += (dx / distance) * this.speed;
-                this.y += (dy / distance) * this.speed;
-            } else {
-                this.y += (Math.random() - 0.5) * this.speed;
-            }
-
-            if (distance < 450) {
-                const now = Date.now();
-                if (now - this.lastAttack > this.attackCooldown) {
+            // Tembak jika musuh berada di jangkauan pandang
+            if (targetDistance < 450) {
+                const attackNow = Date.now();
+                if (attackNow - this.lastAttack > this.attackCooldown) {
                     this.attack(this.target);
-                    this.lastAttack = now;
+                    this.lastAttack = attackNow;
                 }
-            }
-        } else {
-            const targetX = this.team === 'girl' ? (width / 2) - 60 : (width / 2) + 60;
-            const dx = targetX - this.x;
-            if (Math.abs(dx) > 5) {
-                this.x += Math.sign(dx) * 0.5;
             }
         }
 
+        // Batasi gerakan Rusia (kiri) vs NATO (kanan)
         if (this.team === 'girl') {
             if (this.x < 30) this.x = 30;
             if (this.x > (width / 2) - 40) this.x = (width / 2) - 40; 
@@ -311,20 +376,26 @@ class Avatar {
     attack(target) {
         const damage = 8 + Math.floor(Math.random() * 8);
         bullets.push(new Bullet(this.x, this.y, target, this.team, damage, this.color));
+        playShootSound(); // Jalankan efek suara tembakan
     }
 
     draw() {
         ctx.save();
         
+        // Berikan efek mengambang naik-turun yang halus pada koordinat gambar (drawY)
+        const bobOffset = Math.sin(Date.now() * 0.0035 + this.bobPhase) * 6;
+        const drawX = this.x;
+        const drawY = this.y + bobOffset;
+
         const barWidth = 40;
         const barHeight = 4;
         ctx.fillStyle = '#c0392b';
-        ctx.fillRect(this.x - barWidth / 2, this.y - this.radius - 12, barWidth, barHeight);
+        ctx.fillRect(drawX - barWidth / 2, drawY - this.radius - 12, barWidth, barHeight);
         ctx.fillStyle = '#2ecc71';
-        ctx.fillRect(this.x - barWidth / 2, this.y - this.radius - 12, barWidth * (this.hp / this.maxHp), barHeight);
+        ctx.fillRect(drawX - barWidth / 2, drawY - this.radius - 12, barWidth * (this.hp / this.maxHp), barHeight);
 
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.arc(drawX, drawY, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
         ctx.shadowColor = this.color;
         ctx.shadowBlur = 8;
@@ -332,11 +403,11 @@ class Avatar {
         ctx.shadowBlur = 0;
 
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius - 3, 0, Math.PI * 2);
+        ctx.arc(drawX, drawY, this.radius - 3, 0, Math.PI * 2);
         ctx.clip();
 
         if (this.imgLoaded) {
-            ctx.drawImage(this.img, this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+            ctx.drawImage(this.img, drawX - this.radius, drawY - this.radius, this.radius * 2, this.radius * 2);
         } else {
             ctx.fillStyle = '#fff';
             ctx.fill();
@@ -347,7 +418,7 @@ class Avatar {
         ctx.font = 'bold 9px Arial';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
-        ctx.fillText(this.username, this.x, this.y + this.radius + 12);
+        ctx.fillText(this.username, drawX, drawY + this.radius + 12);
     }
 }
 
@@ -388,21 +459,17 @@ function drawParticles() {
     });
 }
 
-// Menangani permintaan spawn avatar dengan pengunci duplikasi mutlak
 socket.on('spawnAvatar', (data) => {
-    // 1. Cek apakah username sudah ada di list aktif
     if (activeUsernames.has(data.username)) {
-        return; // Batalkan instan jika user ini sudah ada di game dan belum mati
+        return; 
     }
 
     const lastDeathTime = userDeathTimes[data.username] || 0;
 
-    // 2. Batalkan jika chat dikirim sebelum waktu kematian terakhir
     if (data.timestamp < lastDeathTime) {
         return; 
     }
 
-    // 3. Batalkan jika belum melewati batas cooldown 3 detik pasca-mati
     const now = Date.now();
     if (now - lastDeathTime < 3000) {
         return; 
@@ -410,7 +477,7 @@ socket.on('spawnAvatar', (data) => {
 
     if (avatars.length < 120) {
         avatars.push(new Avatar(data.username, data.avatarUrl, data.team));
-        activeUsernames.add(data.username); // Masukkan ke daftar kunci aktif
+        activeUsernames.add(data.username); 
     }
 });
 
@@ -488,13 +555,11 @@ function gameLoop() {
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
 
-    // ==========================================
-    // 5. GAMBAR TEMBOK ENERGI PENUH (0 s.d HEIGHT)
-    // ==========================================
+    // Tembok Energi Penuh (Full Height)
     ctx.save();
     const midX = width / 2;
-    const barrierTop = 0;      // Diubah menjadi 0 (Full dari Atas)
-    const barrierBottom = height; // Diubah menjadi height (Full sampai Bawah)
+    const barrierTop = 0;      
+    const barrierBottom = height; 
     const barrierHeight = barrierBottom - barrierTop;
     
     const energyGrad = ctx.createLinearGradient(midX - 15, barrierTop, midX + 15, barrierTop);
@@ -522,10 +587,9 @@ function gameLoop() {
         bullet.draw();
     });
 
-    // Menyaring avatar mati dan menghapus kunci nama mereka agar bisa bermain lagi
     avatars = avatars.filter(a => {
         if (a.hp <= 0) {
-            activeUsernames.delete(a.username); // Bebaskan username jika kalah
+            activeUsernames.delete(a.username); 
             return false;
         }
         return true;
