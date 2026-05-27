@@ -46,9 +46,9 @@ function connectToTikTok(username) {
         let team = null;
 
         // "g" atau "girl" untuk tim perempuan, "b" atau "boy" untuk tim laki-laki
-        if (comment === 'g' || comment.includes('girl')) {
+        if (comment === '1' || comment.includes('girl')) {
             team = 'girl';
-        } else if (comment === 'b' || comment.includes('boy')) {
+        } else if (comment === '2' || comment.includes('boy')) {
             team = 'boy';
         }
 
