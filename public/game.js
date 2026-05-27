@@ -334,3 +334,20 @@ function gameLoop() {
 }
 
 gameLoop();
+// --- Tambahan Logika Sembunyikan Panel untuk Pengguna HP ---
+const toggleAdminBtn = document.getElementById('toggleAdminBtn');
+const adminContent = document.getElementById('admin-content');
+const adminPanel = document.getElementById('admin-panel');
+
+toggleAdminBtn.addEventListener('click', () => {
+    if (adminContent.style.display === 'none') {
+        adminContent.style.display = 'block';
+        toggleAdminBtn.innerText = 'Sembunyikan Panel';
+        adminPanel.style.background = 'rgba(0, 0, 0, 0.9)';
+    } else {
+        adminContent.style.display = 'none';
+        toggleAdminBtn.innerText = 'Tampilkan';
+        // Membuat tombol menjadi transparan/samar agar tidak mengganggu layar stream
+        adminPanel.style.background = 'rgba(0, 0, 0, 0.3)';
+    }
+});
