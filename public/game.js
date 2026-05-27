@@ -150,6 +150,17 @@ connectBtn.addEventListener('click', () => {
 socket.on('connectionStatus', (data) => {
     statusDiv.innerText = data.message;
     statusDiv.style.color = data.success ? '#2ecc71' : '#e74c3c';
+    
+    // LOGIKA AUTO-RESET SAAT BERHASIL TERHUBUNG KE STREAMER BARU
+    if (data.success) {
+        avatars = [];             // Kosongkan semua avatar di layar
+        bullets = [];             // Kosongkan semua peluru yang melayang
+        particles = [];           // Bersihkan partikel ledakan
+        activeUsernames.clear();  // Reset daftar nama penonton yang aktif
+        killsGirl = 0;            // Reset skor Rusia ke 0
+        killsBoy = 0;             // Reset skor NATO ke 0
+        seconds = 0;              // Reset waktu permainan kembali ke 00:00
+    }
 });
 
 let isDragging = false;
