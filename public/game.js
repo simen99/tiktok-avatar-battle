@@ -2,10 +2,10 @@
 // DAFTAR HADIAH DAN URL GAMBAR MENTAH (RAW)
 // ==========================================
 const giftList = {
-    "🎁 ROCKET": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/MAWAR%201C.webp",
-    "🎁 BIG HEALTH": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/BONEKA%2010C.webp",
-    "🎁 MISSILE": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/LITTLE%2020C.webp",
-    "🎁 KILL ALL ENEMY": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/DONUT%2030C.webp"
+    "ROCKET": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/MAWAR%201C.webp",
+    "BIG HEALTH": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/BONEKA%2010C.webp",
+    "MISSILE": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/LITTLE%2020C.webp",
+    "KILL ALL ENEMY": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/DONUT%2030C.webp"
 };
 
 // Memuat (preload) semua gambar hadiah agar bisa digambar di Canvas
