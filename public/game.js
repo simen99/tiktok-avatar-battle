@@ -1,3 +1,28 @@
+// ==========================================
+// DAFTAR HADIAH DAN URL GAMBAR MENTAH (RAW)
+// ==========================================
+const giftList = {
+    "🎁 ROCKET": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/MAWAR%201C.webp",
+    "🎁 BIG HEALTH": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/BONEKA%2010C.webp",
+    "🎁 MISSILE": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/LITTLE%2020C.webp",
+    "🎁 KILL ALL ENEMY": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/DONUT%2030C.webp"
+};
+
+// Memuat (preload) semua gambar hadiah agar bisa digambar di Canvas
+const giftImages = {};
+Object.keys(giftList).forEach(key => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = giftList[key];
+    giftImages[key] = {
+        loaded: false,
+        element: img
+    };
+    img.onload = () => {
+        giftImages[key].loaded = true;
+    };
+});
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const socket = io();
@@ -642,28 +667,32 @@ function gameLoop() {
     ctx.font = 'bold 22px sans-serif';
     ctx.fillText(roundTime, width / 2, 75);
 
+    // Papan Daftar Hadiah (Kanan Bawah) - Ukuran diatur sedikit lebih besar
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(width - 160, height - 180, 150, 160);
+    ctx.fillRect(width - 170, height - 205, 160, 185);
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1;
-    ctx.strokeRect(width - 160, height - 180, 150, 160);
+    ctx.strokeRect(width - 170, height - 205, 160, 185);
 
     ctx.fillStyle = '#fff';
-    ctx.font = '9px sans-serif';
+    ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'left';
-    let startY = height - 160;
-    const triggers = [
-        "🎁 MISSILE",
-        "🎁 LEISURE",
-        "🎁 BULLET STORM",
-        "🎁 TORNADO",
-        "🎁 FIRE LOTUS",
-        "🎁 DRAGON PALM",
-        "🎁 ALL COMBO"
-    ];
+    
+    let startY = height - 180;
+    const triggers = Object.keys(giftList);
+
     triggers.forEach(trigger => {
-        ctx.fillText(trigger, width - 150, startY);
-        startY += 20;
+        const giftImgObj = giftImages[trigger];
+        
+        // Menggambar gambar raw hadiah jika berhasil dimuat
+        if (giftImgObj && giftImgObj.loaded) {
+            ctx.drawImage(giftImgObj.element, width - 160, startY - 12, 16, 16);
+            ctx.fillText(trigger, width - 138, startY);
+        } else {
+            // Fallback teks jika gambar belum selesai dimuat
+            ctx.fillText(trigger, width - 160, startY);
+        }
+        startY += 40; // Memberi jarak agar gambar tidak saling tumpang tindih
     });
 
     requestAnimationFrame(gameLoop);
