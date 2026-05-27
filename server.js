@@ -16,6 +16,9 @@ app.use(express.static('public'));
 
 let tiktokConnection = null;
 
+// Menyimpan tim pengguna berdasarkan aktivitas chat terakhir {"username": "girl" / "boy"}
+const userTeams = {}; 
+
 function connectToTikTok(username) {
     if (tiktokConnection) {
         try {
@@ -49,21 +52,56 @@ function connectToTikTok(username) {
         }
 
         if (team) {
+            // Simpan tim pengguna agar bisa dirujuk saat mereka mengirim gift
+            userTeams[data.uniqueId] = team;
+
             io.emit('spawnAvatar', {
                 team: team,
                 username: data.uniqueId,
                 avatarUrl: data.profilePictureUrl,
-                timestamp: Date.now() // Menambahkan timestamp waktu chat diterima server
+                timestamp: Date.now() 
             });
         }
     });
 
     tiktokConnection.on('gift', (data) => {
-        io.emit('specialAttack', {
-            username: data.uniqueId,
-            giftName: data.giftName,
-            avatarUrl: data.profilePictureUrl
-        });
+        const giftName = data.giftName;
+        const username = data.uniqueId;
+        const avatarUrl = data.profilePictureUrl;
+        
+        // Cari tim pengguna. Jika belum pernah chat 1 atau 2, pilih tim secara acak
+        const team = userTeams[username] || (Math.random() > 0.5 ? 'girl' : 'boy');
+
+        let actionType = null;
+
+        // Pemetaan nama gift TikTok ke aksi game. 
+        // Silakan sesuaikan teks nama gift (sebelah kiri) dengan gift asli yang Anda inginkan.
+        if (giftName === 'Rose' || giftName === 'Mawar') {
+            actionType = 'ROCKET';
+        } else if (giftName === 'Toy' || giftName === 'Teddy Bear' || giftName === 'Boneka') {
+            actionType = 'BIG_HEALTH';
+        } else if (giftName === 'Finger Heart' || giftName === 'Missile' || giftName === 'Kembang Api') {
+            actionType = 'MISSILE';
+        } else if (giftName === 'Doughnut' || giftName === 'Donut') {
+            actionType = 'KILL_ALL';
+        }
+
+        if (actionType) {
+            // Kirim event khusus untuk gift terdaftar
+            io.emit('specialGiftAction', {
+                action: actionType,
+                username: username,
+                avatarUrl: avatarUrl,
+                team: team
+            });
+        } else {
+            // Event fallback default jika gift lain dikirim
+            io.emit('specialAttack', {
+                username: username,
+                giftName: giftName,
+                avatarUrl: avatarUrl
+            });
+        }
     });
 
     tiktokConnection.on('disconnected', () => {
