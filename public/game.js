@@ -13,18 +13,16 @@ const giftImages = {};
 Object.keys(giftList).forEach(key => {
     const img = new Image();
     
-    // Baris crossOrigin sengaja dihapus agar browser tidak memblokir muatan dari luar domain (CORS)
+    // Baris crossOrigin sengaja dilepas untuk mencegah masalah CORS dari server luar
     img.src = giftList[key];
     
     giftImages[key] = {
         loaded: false,
         element: img
     };
-    
     img.onload = () => {
         giftImages[key].loaded = true;
     };
-    
     img.onerror = () => {
         console.error("Gagal memuat gambar hadiah:", key, giftList[key]);
     };
@@ -285,7 +283,8 @@ class Avatar {
         this.team = team;
         this.isBig = isBig;
         
-        // Atur ukuran dan HP berdasarkan status BIG HEALTH
+        this.lastActive = Date.now(); // Mencatat waktu aktivitas awal untuk logika timeout
+
         this.radius = isBig ? 36 : 24;
         this.maxHp = isBig ? 300 : 100;
         this.hp = this.maxHp;
@@ -484,7 +483,7 @@ function drawParticles() {
     });
 }
 
-// Fungsi pembantu untuk serangan misil/roket beruntun
+// Fungsi pembantu untuk serangan beruntun
 function launchGiftBarrage(fromTeam, count, damage, color) {
     const targets = avatars.filter(a => a.team !== fromTeam && a.hp > 0);
     if (targets.length === 0) return;
@@ -498,7 +497,7 @@ function launchGiftBarrage(fromTeam, count, damage, color) {
     playShootSound();
 }
 
-// Fungsi pembantu ledakan membunuh semua musuh
+// Fungsi pembantu eliminasi masal arena lawan
 function triggerKillAll(senderTeam) {
     const targetTeam = senderTeam === 'girl' ? 'boy' : 'girl';
     avatars.forEach(avatar => {
@@ -515,6 +514,14 @@ function triggerKillAll(senderTeam) {
         }
     });
     playKillSound();
+}
+
+// Memperbarui waktu aktif avatar
+function updateLastActive(username) {
+    const avatar = avatars.find(a => a.username === username);
+    if (avatar) {
+        avatar.lastActive = Date.now();
+    }
 }
 
 socket.on('spawnAvatar', (data) => {
@@ -539,27 +546,23 @@ socket.on('spawnAvatar', (data) => {
     }
 });
 
-// Listener khusus aksi gift yang dikonfigurasi
+// Listener khusus aksi gift terdaftar
 socket.on('specialGiftAction', (data) => {
     const { action, username, avatarUrl, team } = data;
 
     if (action === 'ROCKET') {
-        // ROCKET: Mengeluarkan roket banyak dengan damage sedang (12 roket, damage 10 per roket)
         launchGiftBarrage(team, 12, 10, '#f1c40f');
     } 
     else if (action === 'BIG_HEALTH') {
-        // BIG_HEALTH: Avatar berukuran besar dengan darah sedikit tebal (300 HP)
         if (!activeUsernames.has(username)) {
             avatars.push(new Avatar(username, avatarUrl, team, true));
             activeUsernames.add(username);
         }
     } 
     else if (action === 'MISSILE') {
-        // MISSILE: Mengeluarkan misil banyak dengan damage tinggi (8 misil, damage 35 per misil)
         launchGiftBarrage(team, 8, 35, '#e74c3c');
     } 
     else if (action === 'KILL_ALL') {
-        // KILL ALL ENEMY: Ledakan pembersih musuh di arena lawan
         triggerKillAll(team);
     }
 });
@@ -573,6 +576,11 @@ socket.on('specialAttack', (data) => {
             activeUsernames.add(spawnName);
         }
     }
+});
+
+// Memperbarui waktu aktivitas jika penonton berinteraksi
+socket.on('userActivity', (data) => {
+    updateLastActive(data.username);
 });
 
 let seconds = 0;
@@ -670,9 +678,18 @@ function gameLoop() {
         bullet.draw();
     });
 
+    // Penyaringan HP sekaligus Timeout Keaktifan Penonton
+    const now = Date.now();
+    const INACTIVITY_TIMEOUT = 120000; // 2 menit batas toleransi tidak aktif
+
     avatars = avatars.filter(a => {
         if (a.hp <= 0) {
             activeUsernames.delete(a.username); 
+            return false;
+        }
+        if (now - a.lastActive > INACTIVITY_TIMEOUT) {
+            activeUsernames.delete(a.username); 
+            createParticles(a.x, a.y, '#7f8c8d'); // Partikel asap abu-abu saat keluar
             return false;
         }
         return true;
