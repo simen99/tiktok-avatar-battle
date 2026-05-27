@@ -62,6 +62,9 @@ function connectToTikTok(username) {
                 timestamp: Date.now() 
             });
         }
+
+        // Kirim aktivitas untuk memperbarui timer keaktifan avatar di game
+        io.emit('userActivity', { username: data.uniqueId });
     });
 
     tiktokConnection.on('gift', (data) => {
@@ -75,7 +78,6 @@ function connectToTikTok(username) {
         let actionType = null;
 
         // Pemetaan nama gift TikTok ke aksi game. 
-        // Silakan sesuaikan teks nama gift (sebelah kiri) dengan gift asli yang Anda inginkan.
         if (giftName === 'Rose' || giftName === 'Mawar') {
             actionType = 'ROCKET';
         } else if (giftName === 'Toy' || giftName === 'Teddy Bear' || giftName === 'Boneka') {
@@ -102,6 +104,14 @@ function connectToTikTok(username) {
                 avatarUrl: avatarUrl
             });
         }
+
+        // Kirim aktivitas untuk memperbarui timer keaktifan avatar di game
+        io.emit('userActivity', { username: data.uniqueId });
+    });
+
+    // Tambahkan pelacakan "LIKE" dari penonton agar tetap dianggap aktif saat mengetuk layar
+    tiktokConnection.on('like', (data) => {
+        io.emit('userActivity', { username: data.uniqueId });
     });
 
     tiktokConnection.on('disconnected', () => {
