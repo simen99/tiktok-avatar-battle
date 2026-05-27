@@ -1,25 +1,32 @@
 // ==========================================
-// DAFTAR HADIAH DAN URL GAMBAR LOKAL (ROOT/PUBLIC)
+// DAFTAR HADIAH DAN URL GAMBAR MENTAH (RAW GITHUB)
 // ==========================================
 const giftList = {
-    "ROCKET": "/MAWAR%201C.webp",
-    "BIG HEALTH": "/BONEKA%2010C.webp",
-    "MISSILE": "/LITTLE%2020C.webp",
-    "KILL ALL ENEMY": "/DONUT%2030C.webp"
+    "ROCKET": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/MAWAR%201C.webp",
+    "BIG HEALTH": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/BONEKA%2010C.webp",
+    "MISSILE": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/LITTLE%2020C.webp",
+    "KILL ALL ENEMY": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/DONUT%2030C.webp"
 };
 
 // Memuat (preload) semua gambar hadiah agar bisa digambar di Canvas
 const giftImages = {};
 Object.keys(giftList).forEach(key => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    
+    // Baris crossOrigin sengaja dihapus agar browser tidak memblokir muatan dari luar domain (CORS)
     img.src = giftList[key];
+    
     giftImages[key] = {
         loaded: false,
         element: img
     };
+    
     img.onload = () => {
         giftImages[key].loaded = true;
+    };
+    
+    img.onerror = () => {
+        console.error("Gagal memuat gambar hadiah:", key, giftList[key]);
     };
 });
 
