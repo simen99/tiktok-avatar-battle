@@ -1,11 +1,11 @@
 // ==========================================
-// DAFTAR HADIAH DAN URL GAMBAR MENTAH (RAW)
+// DAFTAR HADIAH DAN URL GAMBAR LOKAL (ROOT/PUBLIC)
 // ==========================================
 const giftList = {
-    "ROCKET": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/MAWAR%201C.webp",
-    "BIG HEALTH": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/BONEKA%2010C.webp",
-    "MISSILE": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/LITTLE%2020C.webp",
-    "KILL ALL ENEMY": "https://raw.githubusercontent.com/simen99/tiktok-avatar-battle/refs/heads/main/DONUT%2030C.webp"
+    "ROCKET": "/MAWAR%201C.webp",
+    "BIG HEALTH": "/BONEKA%2010C.webp",
+    "MISSILE": "/LITTLE%2020C.webp",
+    "KILL ALL ENEMY": "/DONUT%2030C.webp"
 };
 
 // Memuat (preload) semua gambar hadiah agar bisa digambar di Canvas
@@ -42,7 +42,7 @@ const activeUsernames = new Set();
 
 // Audio Setup menggunakan Web Audio API
 let audioCtx = null;
-let lastShootSoundTime = 0; // Untuk membatasi suara tembakan agar tidak merusak audio siaran
+let lastShootSoundTime = 0; 
 
 function initAudio() {
     if (!audioCtx) {
@@ -94,10 +94,8 @@ function playKillSound() {
     }
 }
 
-// Efek suara tembakan laser retro dengan pembatas frekuensi (anti-distorsi)
 function playShootSound() {
     const nowTime = Date.now();
-    // Membatasi suara tembakan maksimal 12 kali per detik agar suara stream tetap bersih
     if (nowTime - lastShootSoundTime < 80) { 
         return;
     }
@@ -114,11 +112,11 @@ function playShootSound() {
         osc.connect(gainNode);
         gainNode.connect(audioCtx.destination);
         
-        osc.type = 'sine'; // Gelombang sinus menghasilkan suara 'pew' yang lembut
+        osc.type = 'sine'; 
         osc.frequency.setValueAtTime(650, now);
         osc.frequency.exponentialRampToValueAtTime(120, now + 0.1);
         
-        gainNode.gain.setValueAtTime(0.04, now); // Volume pelan agar tidak bising saat spam
+        gainNode.gain.setValueAtTime(0.04, now); 
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
         
         osc.start(now);
@@ -275,12 +273,15 @@ class Bullet {
 // CLASS AVATAR (RUSIA vs NATO)
 // ==========================================
 class Avatar {
-    constructor(username, avatarUrl, team) {
+    constructor(username, avatarUrl, team, isBig = false) {
         this.username = username;
         this.team = team;
-        this.radius = 24;
-        this.hp = 100;
-        this.maxHp = 100;
+        this.isBig = isBig;
+        
+        // Atur ukuran dan HP berdasarkan status BIG HEALTH
+        this.radius = isBig ? 36 : 24;
+        this.maxHp = isBig ? 300 : 100;
+        this.hp = this.maxHp;
         
         if (team === 'girl') {
             this.x = 50 + Math.random() * 50;
@@ -291,7 +292,7 @@ class Avatar {
         }
         this.y = 150 + Math.random() * (height - 300);
         
-        this.speed = 0.8 + Math.random() * 0.6; // Kecepatan melayang santai
+        this.speed = 0.8 + Math.random() * 0.6; 
         
         this.img = new Image();
         this.img.crossOrigin = "anonymous"; 
@@ -304,15 +305,13 @@ class Avatar {
         this.lastAttack = 0;
         this.attackCooldown = 1200; 
 
-        // Sistem Mengambang Acak (Float & Wander)
-        this.bobPhase = Math.random() * Math.PI * 2; // Fase awal melayang naik-turun
+        this.bobPhase = Math.random() * Math.PI * 2; 
         this.wanderX = this.x;
         this.wanderY = this.y;
         this.lastWanderTime = 0;
         this.chooseNewWanderTarget();
     }
 
-    // Memilih titik kordinat acak baru di area pertahanannya
     chooseNewWanderTarget() {
         const minY = 140;
         const maxY = height - 130;
@@ -330,24 +329,21 @@ class Avatar {
     }
 
     update() {
-        // Logika berkeliaran secara acak (ganti arah setiap 3 - 5 detik)
         const now = Date.now();
         if (now - this.lastWanderTime > 3000 + Math.random() * 2000) {
             this.chooseNewWanderTarget();
             this.lastWanderTime = now;
         }
 
-        // Bergerak mengambang mendekati titik tujuan acak (wander target)
         const dx = this.wanderX - this.x;
         const dy = this.wanderY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist > 5) {
-            this.x += (dx / dist) * this.speed * 0.7; // Gerakan lebih lambat agar terasa melayang
+            this.x += (dx / dist) * this.speed * 0.7; 
             this.y += (dy / dist) * this.speed * 0.7;
         }
 
-        // Cari musuh terdekat untuk ditembak
         if (!this.target || this.target.hp <= 0) {
             this.target = this.findClosestOpponent();
         }
@@ -357,7 +353,6 @@ class Avatar {
             const targetDy = this.target.y - this.y;
             const targetDistance = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
 
-            // Tembak jika musuh berada di jangkauan pandang
             if (targetDistance < 450) {
                 const attackNow = Date.now();
                 if (attackNow - this.lastAttack > this.attackCooldown) {
@@ -367,7 +362,6 @@ class Avatar {
             }
         }
 
-        // Batasi gerakan Rusia (kiri) vs NATO (kanan)
         if (this.team === 'girl') {
             if (this.x < 30) this.x = 30;
             if (this.x > (width / 2) - 40) this.x = (width / 2) - 40; 
@@ -401,18 +395,17 @@ class Avatar {
     attack(target) {
         const damage = 8 + Math.floor(Math.random() * 8);
         bullets.push(new Bullet(this.x, this.y, target, this.team, damage, this.color));
-        playShootSound(); // Jalankan efek suara tembakan
+        playShootSound(); 
     }
 
     draw() {
         ctx.save();
         
-        // Berikan efek mengambang naik-turun yang halus pada koordinat gambar (drawY)
         const bobOffset = Math.sin(Date.now() * 0.0035 + this.bobPhase) * 6;
         const drawX = this.x;
         const drawY = this.y + bobOffset;
 
-        const barWidth = 40;
+        const barWidth = this.isBig ? 60 : 40;
         const barHeight = 4;
         ctx.fillStyle = '#c0392b';
         ctx.fillRect(drawX - barWidth / 2, drawY - this.radius - 12, barWidth, barHeight);
@@ -484,6 +477,39 @@ function drawParticles() {
     });
 }
 
+// Fungsi pembantu untuk serangan misil/roket beruntun
+function launchGiftBarrage(fromTeam, count, damage, color) {
+    const targets = avatars.filter(a => a.team !== fromTeam && a.hp > 0);
+    if (targets.length === 0) return;
+
+    for (let i = 0; i < count; i++) {
+        const target = targets[Math.floor(Math.random() * targets.length)];
+        const startX = fromTeam === 'girl' ? 50 : width - 50;
+        const startY = Math.random() * height;
+        bullets.push(new Bullet(startX, startY, target, fromTeam, damage, color));
+    }
+    playShootSound();
+}
+
+// Fungsi pembantu ledakan membunuh semua musuh
+function triggerKillAll(senderTeam) {
+    const targetTeam = senderTeam === 'girl' ? 'boy' : 'girl';
+    avatars.forEach(avatar => {
+        if (avatar.team === targetTeam && avatar.hp > 0) {
+            avatar.hp = 0;
+            createParticles(avatar.x, avatar.y, '#e74c3c');
+            userDeathTimes[avatar.username] = Date.now();
+            
+            if (senderTeam === 'girl') {
+                killsGirl++;
+            } else {
+                killsBoy++;
+            }
+        }
+    });
+    playKillSound();
+}
+
 socket.on('spawnAvatar', (data) => {
     if (activeUsernames.has(data.username)) {
         return; 
@@ -503,6 +529,31 @@ socket.on('spawnAvatar', (data) => {
     if (avatars.length < 120) {
         avatars.push(new Avatar(data.username, data.avatarUrl, data.team));
         activeUsernames.add(data.username); 
+    }
+});
+
+// Listener khusus aksi gift yang dikonfigurasi
+socket.on('specialGiftAction', (data) => {
+    const { action, username, avatarUrl, team } = data;
+
+    if (action === 'ROCKET') {
+        // ROCKET: Mengeluarkan roket banyak dengan damage sedang (12 roket, damage 10 per roket)
+        launchGiftBarrage(team, 12, 10, '#f1c40f');
+    } 
+    else if (action === 'BIG_HEALTH') {
+        // BIG_HEALTH: Avatar berukuran besar dengan darah sedikit tebal (300 HP)
+        if (!activeUsernames.has(username)) {
+            avatars.push(new Avatar(username, avatarUrl, team, true));
+            activeUsernames.add(username);
+        }
+    } 
+    else if (action === 'MISSILE') {
+        // MISSILE: Mengeluarkan misil banyak dengan damage tinggi (8 misil, damage 35 per misil)
+        launchGiftBarrage(team, 8, 35, '#e74c3c');
+    } 
+    else if (action === 'KILL_ALL') {
+        // KILL ALL ENEMY: Ledakan pembersih musuh di arena lawan
+        triggerKillAll(team);
     }
 });
 
@@ -667,7 +718,7 @@ function gameLoop() {
     ctx.font = 'bold 22px sans-serif';
     ctx.fillText(roundTime, width / 2, 75);
 
-    // Papan Daftar Hadiah (Kanan Bawah) - Ukuran diatur sedikit lebih besar
+    // Papan Daftar Hadiah (Kanan Bawah)
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(width - 170, height - 205, 160, 185);
     ctx.strokeStyle = '#fff';
@@ -684,15 +735,13 @@ function gameLoop() {
     triggers.forEach(trigger => {
         const giftImgObj = giftImages[trigger];
         
-        // Menggambar gambar raw hadiah jika berhasil dimuat
         if (giftImgObj && giftImgObj.loaded) {
             ctx.drawImage(giftImgObj.element, width - 160, startY - 12, 16, 16);
             ctx.fillText(trigger, width - 138, startY);
         } else {
-            // Fallback teks jika gambar belum selesai dimuat
             ctx.fillText(trigger, width - 160, startY);
         }
-        startY += 40; // Memberi jarak agar gambar tidak saling tumpang tindih
+        startY += 40; 
     });
 
     requestAnimationFrame(gameLoop);
