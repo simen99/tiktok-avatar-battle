@@ -5,21 +5,79 @@ const socket = io();
 const width = canvas.width;
 const height = canvas.height;
 
-let killsGirl = 0;
-let killsBoy = 0;
+let killsGirl = 0; // Rusia
+let killsBoy = 0;  // NATO
 let roundTime = "00:00";
 
 let avatars = []; 
-let bullets = []; // Array untuk menampung semua peluru yang aktif
+let bullets = []; 
 let particles = []; 
 const userDeathTimes = {}; 
 
-// UI Admin Panel
+// Audio Setup menggunakan Web Audio API (Sangat andal di HP tanpa lag/CORS)
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+function playKillSound() {
+    initAudio();
+    if (!audioCtx) return;
+
+    try {
+        const now = audioCtx.currentTime;
+        
+        // Suara Laser Frekuensi Tinggi
+        const oscLaser = audioCtx.createOscillator();
+        const gainLaser = audioCtx.createGain();
+        oscLaser.connect(gainLaser);
+        gainLaser.connect(audioCtx.destination);
+        
+        oscLaser.type = 'triangle';
+        oscLaser.frequency.setValueAtTime(900, now);
+        oscLaser.frequency.exponentialRampToValueAtTime(180, now + 0.15);
+        
+        gainLaser.gain.setValueAtTime(0.12, now);
+        gainLaser.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        
+        oscLaser.start(now);
+        oscLaser.stop(now + 0.15);
+
+        // Suara Ledakan Bass Rendah
+        const oscBass = audioCtx.createOscillator();
+        const gainBass = audioCtx.createGain();
+        oscBass.connect(gainBass);
+        gainBass.connect(audioCtx.destination);
+
+        oscBass.type = 'sawtooth';
+        oscBass.frequency.setValueAtTime(140, now);
+        oscBass.frequency.linearRampToValueAtTime(30, now + 0.25);
+
+        gainBass.gain.setValueAtTime(0.18, now);
+        gainBass.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+        oscBass.start(now);
+        oscBass.stop(now + 0.25);
+    } catch (e) {
+        console.error("Gagal memutar audio:", e);
+    }
+}
+
+// UI Admin Panel & Draggable Logic
 const streamerUsernameInput = document.getElementById('streamerUsername');
 const connectBtn = document.getElementById('connectBtn');
 const statusDiv = document.getElementById('status');
+const adminPanel = document.getElementById('admin-panel');
+const adminHeader = document.getElementById('admin-header');
 
 connectBtn.addEventListener('click', () => {
+    initAudio(); // Aktifkan otorisasi audio saat tombol disentuh
     const username = streamerUsernameInput.value.replace('@', '').trim();
     if (username) {
         statusDiv.innerText = "Menghubungkan...";
@@ -31,6 +89,59 @@ socket.on('connectionStatus', (data) => {
     statusDiv.innerText = data.message;
     statusDiv.style.color = data.success ? '#2ecc71' : '#e74c3c';
 });
+
+// Sistem Drag and Drop Panel Admin (PC & HP)
+let isDragging = false;
+let startX, startY;
+
+const dragStart = (e) => {
+    initAudio(); 
+    isDragging = true;
+    
+    const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+    
+    const rect = adminPanel.getBoundingClientRect();
+    startX = clientX - rect.left;
+    startY = clientY - rect.top;
+};
+
+const dragMove = (e) => {
+    if (!isDragging) return;
+    
+    const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+    
+    const containerRect = document.getElementById('game-container').getBoundingClientRect();
+    
+    let left = clientX - containerRect.left - startX;
+    let top = clientY - containerRect.top - startY;
+    
+    // Batasi agar panel tidak ditarik keluar arena game
+    const maxLeft = containerRect.width - adminPanel.offsetWidth;
+    const maxTop = containerRect.height - adminPanel.offsetHeight;
+    
+    if (left < 0) left = 0;
+    if (left > maxLeft) left = maxLeft;
+    if (top < 0) top = 0;
+    if (top > maxTop) top = maxTop;
+    
+    adminPanel.style.left = left + 'px';
+    adminPanel.style.top = top + 'px';
+};
+
+const dragEnd = () => {
+    isDragging = false;
+};
+
+// Pasang event listener geser
+adminHeader.addEventListener('mousedown', dragStart);
+document.addEventListener('mousemove', dragMove);
+document.addEventListener('mouseup', dragEnd);
+
+adminHeader.addEventListener('touchstart', dragStart, { passive: true });
+document.addEventListener('touchmove', dragMove, { passive: false });
+document.addEventListener('touchend', dragEnd);
 
 const defaultAvatar = new Image();
 defaultAvatar.src = 'https://www.w3schools.com/howto/img_avatar.png';
@@ -48,12 +159,11 @@ class Bullet {
         this.radius = 4;
         this.active = true;
 
-        // Hitung arah dan sudut tembakan menuju target
         const dx = target.x - startX;
         const dy = target.y - startY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        this.speed = 7; // Kecepatan terbang peluru
+        this.speed = 7;
         this.vx = (dx / distance) * this.speed;
         this.vy = (dy / distance) * this.speed;
     }
@@ -62,22 +172,21 @@ class Bullet {
         this.x += this.vx;
         this.y += this.vy;
 
-        // Periksa tabrakan dengan semua avatar musuh
         for (let other of avatars) {
             if (other.team !== this.team && other.hp > 0) {
                 const dx = other.x - this.x;
                 const dy = other.y - this.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 
-                // Jika peluru mengenai radius tubuh musuh
                 if (dist < other.radius + this.radius) {
                     other.hp -= this.damage;
                     createParticles(other.x, other.y, this.color);
-                    this.active = false; // Hancurkan peluru
+                    this.active = false; 
 
-                    // Jika musuh mati akibat peluru ini
                     if (other.hp <= 0) {
                         userDeathTimes[other.username] = Date.now();
+                        playKillSound(); // Jalankan suara ledakan arcade
+                        
                         if (this.team === 'girl') {
                             killsGirl++;
                         } else {
@@ -89,7 +198,6 @@ class Bullet {
             }
         }
 
-        // Hancurkan peluru jika keluar batas layar
         if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
             this.active = false;
         }
@@ -101,14 +209,14 @@ class Bullet {
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.shadowColor = this.color;
-        ctx.shadowBlur = 10; // Efek peluru bercahaya (glow)
+        ctx.shadowBlur = 10;
         ctx.fill();
         ctx.restore();
     }
 }
 
 // ==========================================
-// CLASS AVATAR (PEMAIN)
+// CLASS AVATAR (RUSIA vs NATO)
 // ==========================================
 class Avatar {
     constructor(username, avatarUrl, team) {
@@ -120,10 +228,10 @@ class Avatar {
         
         if (team === 'girl') {
             this.x = 50 + Math.random() * 50;
-            this.color = '#3498db';
+            this.color = '#3498db'; // Rusia (Biru)
         } else {
             this.x = width - 50 - Math.random() * 50;
-            this.color = '#e74c3c';
+            this.color = '#e74c3c'; // NATO (Merah)
         }
         this.y = 150 + Math.random() * (height - 300);
         
@@ -138,7 +246,7 @@ class Avatar {
 
         this.target = null;
         this.lastAttack = 0;
-        this.attackCooldown = 1200; // Jeda waktu menembak (1.2 detik)
+        this.attackCooldown = 1200; 
     }
 
     update() {
@@ -151,16 +259,13 @@ class Avatar {
             const dy = this.target.y - this.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            // Pergerakan taktis: Dekati jika terlalu jauh, tapi batasi agar tidak lewat tengah
             if (distance > 180) {
                 this.x += (dx / distance) * this.speed;
                 this.y += (dy / distance) * this.speed;
             } else {
-                // Menghindar menyamping sedikit atau bergerak ke atas/bawah untuk mencari celah tembak
                 this.y += (Math.random() - 0.5) * this.speed;
             }
 
-            // Menembakkan peluru jika cooldown selesai dan musuh berada dalam jangkauan pandang
             if (distance < 450) {
                 const now = Date.now();
                 if (now - this.lastAttack > this.attackCooldown) {
@@ -169,7 +274,6 @@ class Avatar {
                 }
             }
         } else {
-            // Jika tidak ada musuh, berbaris mendekati garis batas masing-masing
             const targetX = this.team === 'girl' ? (width / 2) - 60 : (width / 2) + 60;
             const dx = targetX - this.x;
             if (Math.abs(dx) > 5) {
@@ -177,19 +281,16 @@ class Avatar {
             }
         }
 
-        // ==========================================
-        // VALIDASI PEMBATAS GARIS TENGAH (Mencegah Lewat Batas)
-        // ==========================================
+        // Batasi gerakan Rusia (kiri) vs NATO (kanan)
         if (this.team === 'girl') {
             if (this.x < 30) this.x = 30;
-            if (this.x > (width / 2) - 40) this.x = (width / 2) - 40; // Batas kiri tidak boleh lewati garis tengah
+            if (this.x > (width / 2) - 40) this.x = (width / 2) - 40; 
         } else {
             if (this.x > width - 30) this.x = width - 30;
-            if (this.x < (width / 2) + 40) this.x = (width / 2) + 40; // Batas kanan tidak boleh lewati garis tengah
+            if (this.x < (width / 2) + 40) this.x = (width / 2) + 40; 
         }
 
-        // Batasi gerakan vertikal arena
-        if (this.y < 120) this.y = 120;
+        if (this.y < 130) this.y = 130; // Batasi vertikal agar tidak tertutup papan skor atas
         if (this.y > height - 120) this.y = height - 120;
     }
 
@@ -212,7 +313,6 @@ class Avatar {
     }
 
     attack(target) {
-        // Meluncurkan objek Bullet baru, bukan mengurangi HP secara instan
         const damage = 8 + Math.floor(Math.random() * 8);
         bullets.push(new Bullet(this.x, this.y, target, this.team, damage, this.color));
     }
@@ -292,7 +392,6 @@ function drawParticles() {
     });
 }
 
-// Menangani permintaan spawn avatar dengan validasi ketat
 socket.on('spawnAvatar', (data) => {
     const isAlreadyAlive = avatars.some(a => a.username === data.username && a.hp > 0);
     if (isAlreadyAlive) {
@@ -331,19 +430,103 @@ setInterval(() => {
 }, 1000);
 
 function gameLoop() {
-    // Latar Belakang Lapangan Hijau
-    ctx.fillStyle = '#27ae60';
+    // 1. Bersihkan arena dengan warna dasar gelap
+    ctx.fillStyle = '#080808';
     ctx.fillRect(0, 0, width, height);
 
-    // Garis Batas Tengah
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([10, 10]);
+    // ==========================================
+    // 2. GAMBAR BACKGROUND BENDERA RUSIA (KIRI)
+    // ==========================================
+    ctx.save();
+    ctx.globalAlpha = 0.35; // Transparansi latar agar tidak mengganggu fokus ke avatar
+    const leftW = width / 2;
+    // Strip Putih
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, leftW, height / 3);
+    // Strip Biru Rusia
+    ctx.fillStyle = '#0039a6';
+    ctx.fillRect(0, height / 3, leftW, height / 3);
+    // Strip Merah Rusia
+    ctx.fillStyle = '#d52b1e';
+    ctx.fillRect(0, (2 * height) / 3, leftW, height / 3);
+    ctx.restore();
+
+    // ==========================================
+    // 3. GAMBAR BACKGROUND LOGO & WARNA NATO (KANAN)
+    // ==========================================
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    // Latar Biru Navy NATO
+    ctx.fillStyle = '#002451';
+    ctx.fillRect(width / 2, 0, width / 2, height);
+    
+    // Lukis Simbol Kompas NATO di belakang arena kanan
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1.5;
+    const cx = (3 * width) / 4;
+    const cy = height / 2;
+    
+    // Lingkaran Kompas
     ctx.beginPath();
-    ctx.moveTo(width / 2, 100);
-    ctx.lineTo(width / 2, height - 100);
+    ctx.arc(cx, cy, 65, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.setLineDash([]);
+    
+    // Bintang Empat Penjuru NATO
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 90);
+    ctx.quadraticCurveTo(cx + 15, cy - 15, cx + 90, cy);
+    ctx.quadraticCurveTo(cx + 15, cy + 15, cx, cy + 90);
+    ctx.quadraticCurveTo(cx - 15, cy + 15, cx - 90, cy);
+    ctx.quadraticCurveTo(cx - 15, cy - 15, cx, cy - 90);
+    ctx.fill();
+    ctx.stroke();
+    
+    // Garis Penunjuk Arah
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 130); ctx.lineTo(cx, cy + 130);
+    ctx.moveTo(cx - 130, cy); ctx.lineTo(cx + 130, cy);
+    ctx.stroke();
+    ctx.restore();
+
+    // 4. Tambahkan Vignette Gelap agar Visual Lebih Dramatis
+    ctx.save();
+    const vignette = ctx.createRadialGradient(width/2, height/2, 120, width/2, height/2, width);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.65)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+
+    // ==========================================
+    // 5. GAMBAR TEMBOK ENERGI NEON GLOW (PEMBATAS)
+    // ==========================================
+    ctx.save();
+    const midX = width / 2;
+    const barrierTop = 110;
+    const barrierBottom = height - 120;
+    const barrierHeight = barrierBottom - barrierTop;
+    
+    // Cahaya Neon Samping (Gradasi Biru-Merah)
+    const energyGrad = ctx.createLinearGradient(midX - 15, barrierTop, midX + 15, barrierTop);
+    energyGrad.addColorStop(0, 'rgba(52, 152, 219, 0)');
+    energyGrad.addColorStop(0.3, 'rgba(52, 152, 219, 0.7)');
+    energyGrad.addColorStop(0.5, 'rgba(255, 255, 255, 1)');
+    energyGrad.addColorStop(0.7, 'rgba(231, 76, 60, 0.7)');
+    energyGrad.addColorStop(1, 'rgba(231, 76, 60, 0)');
+    ctx.fillStyle = energyGrad;
+    ctx.fillRect(midX - 15, barrierTop, 30, barrierHeight);
+    
+    // Inti Neon Putih bersinar emas
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#f1c40f';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(midX, barrierTop);
+    ctx.lineTo(midX, barrierBottom);
+    ctx.stroke();
+    ctx.restore();
 
     // Update & Menggambar Peluru
     bullets = bullets.filter(b => b.active);
@@ -362,45 +545,51 @@ function gameLoop() {
     updateParticles();
     drawParticles();
 
-    // Gambar Header Hitam Overlay
-    ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    ctx.fillRect(0, 0, width, 100);
+    // ==========================================
+    // 6. GAMBAR PAPAN SKOR ATAS (RUSIA VS NATO)
+    // ==========================================
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fillRect(0, 0, width, 110); // Menutup penuh 110px pertama agar rapi
 
-    ctx.fillStyle = '#3498db';
-    ctx.font = 'bold 15px sans-serif';
+    // Tim Kiri - Rusia
+    ctx.fillStyle = '#f1c40f'; 
+    ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('CHAT 1 JOIN GIRL', 20, 30);
+    ctx.fillText('CHAT 1', 20, 32);
 
-    ctx.fillStyle = '#e74c3c';
+    ctx.fillStyle = '#ffffff'; 
     ctx.font = 'bold 15px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('CHAT 2 JOIN BOY', width - 20, 30);
+    ctx.fillText('TEAM RUSIA', 20, 56);
 
-    ctx.fillStyle = '#bdc3c7';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('TEAM GIRL', 20, 50);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.fillText(`${killsGirl} KILLS`, 20, 75);
-
-    ctx.fillStyle = '#bdc3c7';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('TEAM BOY', width - 20, 50);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.fillText(`${killsBoy} KILLS`, width - 20, 75);
-
-    ctx.fillStyle = '#e67e22';
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('ROUND TIME', width / 2, 35);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#e74c3c'; 
     ctx.font = 'bold 22px sans-serif';
-    ctx.fillText(roundTime, width / 2, 65);
+    ctx.fillText(`${killsGirl} KILLS`, 20, 86);
 
-    // Keterangan Daftar Triggers
+    // Tim Kanan - NATO
+    ctx.fillStyle = '#f1c40f'; 
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('CHAT 2', width - 20, 32);
+
+    ctx.fillStyle = '#ffffff'; 
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText('TEAM NATO', width - 20, 56);
+
+    ctx.fillStyle = '#e74c3c'; 
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(`${killsBoy} KILLS`, width - 20, 86);
+
+    // Waktu Tengah (Round Time)
+    ctx.fillStyle = '#bdc3c7';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ROUND TIME', width / 2, 40);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(roundTime, width / 2, 75);
+
+    // Keterangan Daftar Triggers Kanan Bawah
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(width - 160, height - 180, 150, 160);
     ctx.strokeStyle = '#fff';
@@ -431,17 +620,17 @@ function gameLoop() {
 // Logika Sembunyikan Panel
 const toggleAdminBtn = document.getElementById('toggleAdminBtn');
 const adminContent = document.getElementById('admin-content');
-const adminPanel = document.getElementById('admin-panel');
 
 toggleAdminBtn.addEventListener('click', () => {
+    initAudio(); // Aktifkan audio saat tombol diklik
     if (adminContent.style.display === 'none') {
         adminContent.style.display = 'block';
         toggleAdminBtn.innerText = 'Sembunyikan Panel';
-        adminPanel.style.background = 'rgba(0, 0, 0, 0.9)';
+        adminPanel.style.background = 'rgba(10, 10, 10, 0.95)';
     } else {
         adminContent.style.display = 'none';
         toggleAdminBtn.innerText = 'Tampilkan';
-        adminPanel.style.background = 'rgba(0, 0, 0, 0.3)';
+        adminPanel.style.background = 'rgba(10, 10, 10, 0.4)';
     }
 });
 
