@@ -2,8 +2,8 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>TikTok Avatar Battle (Mobile Mode)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Rusia vs NATO - Avatar Battle</title>
     <style>
         * {
             box-sizing: border-box;
@@ -11,7 +11,7 @@
             padding: 0;
         }
         body {
-            background-color: #000;
+            background-color: #0c0c0c;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -24,31 +24,47 @@
             position: relative;
             width: 100vw;
             height: 100vh;
-            background: #222;
+            max-width: 56.25vh; /* Mengunci rasio 9:16 agar visual anti-terpotong di HP */
+            background: #000;
             overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            border-left: 1px solid #222;
+            border-right: 1px solid #222;
         }
         canvas {
             width: 100%;
             height: 100%;
             display: block;
-            object-fit: cover; /* Membuat game memenuhi layar HP */
+            object-fit: cover;
         }
-        /* Panel admin yang fleksibel untuk HP */
+        /* Panel admin yang bisa digeser (draggable) */
         #admin-panel {
             position: absolute;
-            top: 15px;
+            top: 130px; /* Diturunkan sedikit agar tidak menutupi papan skor atas */
             left: 15px;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 10px;
-            border-radius: 8px;
+            background: rgba(10, 10, 10, 0.95);
+            padding: 12px;
+            border-radius: 10px;
             color: white;
-            font-size: 12px;
-            z-index: 10;
-            border: 1px solid #444;
-            max-width: 200px;
+            font-size: 11px;
+            z-index: 999;
+            border: 2px solid #e67e22;
+            width: 180px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            user-select: none;
+            touch-action: none; /* Mencegah layar HP bergeser saat menarik panel */
+        }
+        #admin-header {
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 6px;
+            color: #e67e22;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+            cursor: move;
         }
         #admin-panel input, #admin-panel button {
-            font-size: 12px;
+            font-size: 11px;
             padding: 6px;
             margin-top: 5px;
             border-radius: 4px;
@@ -71,15 +87,15 @@
 </head>
 <body>
     <div id="game-container">
-        <!-- Panel Kontrol HP -->
+        <!-- Panel Kontrol HP Draggable -->
         <div id="admin-panel">
+            <div id="admin-header">⚡ GESER PANEL DISINI ⚡</div>
             <div id="admin-content">
                 <label for="streamerUsername">Hubungkan Live TikTok:</label>
                 <input type="text" id="streamerUsername" placeholder="Username (tanpa @)">
                 <button id="connectBtn">Hubungkan</button>
                 <div id="status" style="margin-top: 5px; color: #ffeb3b; text-align: center;">Belum Terhubung</div>
             </div>
-            <!-- Tombol untuk menyembunyikan panel input saat live dimulai -->
             <button id="toggleAdminBtn">Sembunyikan Panel</button>
         </div>
 
