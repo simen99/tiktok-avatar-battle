@@ -12,13 +12,11 @@ const io = new Server(server, {
     }
 });
 
-// Menyajikan folder 'public' secara statis ke browser
 app.use(express.static('public'));
 
 let tiktokConnection = null;
 
 function connectToTikTok(username) {
-    // Jika koneksi sebelumnya aktif, tutup terlebih dahulu
     if (tiktokConnection) {
         try {
             tiktokConnection.disconnect();
@@ -37,18 +35,16 @@ function connectToTikTok(username) {
         })
         .catch(err => {
             console.error('Gagal menghubungkan ke TikTok Live:', err);
-            io.emit('connectionStatus', { success: false, message: `Gagal menghubungkan: ${err.message || err.toString()}` });
+            io.emit('connectionStatus', { success: false, message: `Gagal: ${err.message || err.toString()}` });
         });
 
-    // Menangani chat masuk
     tiktokConnection.on('chat', (data) => {
-        const comment = data.comment.toLowerCase().trim();
+        const comment = data.comment.trim();
         let team = null;
 
-        // "g" atau "girl" untuk tim perempuan, "b" atau "boy" untuk tim laki-laki
-        if (comment === '1' || comment.includes('girl')) {
+        if (comment === '1') {
             team = 'girl';
-        } else if (comment === '2' || comment.includes('boy')) {
+        } else if (comment === '2') {
             team = 'boy';
         }
 
@@ -56,12 +52,12 @@ function connectToTikTok(username) {
             io.emit('spawnAvatar', {
                 team: team,
                 username: data.uniqueId,
-                avatarUrl: data.profilePictureUrl
+                avatarUrl: data.profilePictureUrl,
+                timestamp: Date.now() // Menambahkan timestamp waktu chat diterima server
             });
         }
     });
 
-    // Menangani gift masuk untuk serangan spesial
     tiktokConnection.on('gift', (data) => {
         io.emit('specialAttack', {
             username: data.uniqueId,
@@ -76,12 +72,11 @@ function connectToTikTok(username) {
     });
 }
 
-// Koneksi WebSocket ke browser game
 io.on('connection', (socket) => {
     console.log(`Klien web terhubung: ${socket.id}`);
 
     socket.on('connectToStreamer', (username) => {
-        console.log(`Meminta koneksi ke akun TikTok: ${username}`);
+        console.log(`Meminta koneksi ke streamer: ${username}`);
         connectToTikTok(username);
     });
 
